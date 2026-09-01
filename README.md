@@ -273,6 +273,12 @@ Successful Link Payments: 0
 Escalations: 1
 ```
 
+### Batch Recovery Demo
+
+![Batch Recovery Processing](screenshots/batch1.png)
+
+![Batch Recovery Report](screenshots/batch2.png)
+
 ---
 
 ## 🖥️ Streamlit Dashboard
