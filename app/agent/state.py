@@ -16,6 +16,7 @@ class AgentState(TypedDict, total=False):
     relevant: bool
 
     action: str
+    decision_reason: str
 
     action_result: dict
 
