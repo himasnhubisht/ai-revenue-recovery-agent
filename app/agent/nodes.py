@@ -48,116 +48,196 @@ def build_query(state):
 
 def retrieve_knowledge(state):
 
-    results = retrieve(
-        state["query"],
-        state["merchant_id"]
-    )
+    try:
+        results = retrieve(
+            state["query"],
+            state["merchant_id"]
+        )
 
-    return {
-        "retrieved_documents": results
-    }
+        return {
+            "retrieved_documents": results,
+            "retrieval_error": False
+        }
 
+    except Exception as exc:
+
+        print(f"RAG retrieval failed: {exc}")
+
+        return {
+            "retrieved_documents": [],
+            "retrieval_error": True
+        }
 
 def grade_knowledge(state):
 
+    documents = state.get(
+        "retrieved_documents",
+        []
+    )
+
+    # No documents means the agent cannot safely
+    # make an automatic recovery decision.
+    if not documents:
+        return {
+            "relevant": False,
+            "grading_error": True
+        }
+
     query = state["query"]
-    documents = state["retrieved_documents"]
 
-    relevant = False
+    try:
 
-    for document, score in documents:
+        for document, score in documents:
 
-        if grade_document(query, document):
-            relevant = True
-            break
+            if grade_document(query, document):
+                return {
+                    "relevant": True,
+                    "grading_error": False
+                }
 
-    return {
-        "relevant": relevant
-    }
-   
-         
+        return {
+            "relevant": False,
+            "grading_error": False
+        }
+
+    except Exception as exc:
+
+        print(f"Knowledge grading failed: {exc}")
+
+        return {
+            "relevant": False,
+            "grading_error": True}
+
 def decision_node(state):
 
     failure_reason = state["failure_reason"]
     attempt_count = state.get("attempt_count", 0)
 
+    documents = state.get("retrieved_documents", [])
+
+    # ---------------------------------------------------------
+    # Find merchant policy from retrieved documents
+    # ---------------------------------------------------------
+
+    policy_text = ""
+
+    for document, score in documents:
+
+        text = document.page_content
+
+        if failure_reason.replace("_", " ").lower() in text.lower():
+            policy_text = text
+            break
+
+    # ---------------------------------------------------------
+    # If RAG policy was not found, fail safely
+    # ---------------------------------------------------------
+
+    if not policy_text:
+
+        return {
+            "action": "escalate",
+            "decision_reason": (
+                "No relevant merchant recovery policy was "
+                "retrieved. The payment was escalated for "
+                "manual review."
+            )
+        }
+
+    # ---------------------------------------------------------
+    # Decision based on retrieved merchant policy
+    # ---------------------------------------------------------
+
     if failure_reason == "insufficient_funds":
 
         if attempt_count < 2:
-            action = "retry"
 
-            decision_reason = (
-                f"Insufficient funds caused the payment failure. "
-                f"{attempt_count} retry attempt(s) have already been used. "
-                f"TechStore allows up to 2 automatic retries, "
-                f"so the agent will retry the payment."
+            return {
+                "action": "retry",
+                "decision_reason": (
+                    "The retrieved TechStore policy allows "
+                    "up to 2 automatic retries for insufficient "
+                    "funds. The current attempt count is "
+                    f"{attempt_count}, so another retry is allowed."
+                )
+            }
+
+        return {
+            "action": "payment_link",
+            "decision_reason": (
+                "The retrieved TechStore policy allows a maximum "
+                "of 2 automatic retries for insufficient funds. "
+                "The retry limit has been reached, so a payment "
+                "link will be generated."
             )
-
-        else:
-            action = "payment_link"
-
-            decision_reason = (
-                "The payment has already reached the maximum of "
-                "2 automatic retries allowed by TechStore. "
-                "The agent will stop retrying and generate a payment link."
-            )
+        }
 
     elif failure_reason == "card_declined":
 
         if attempt_count < 1:
-            action = "retry"
 
-            decision_reason = (
-                "The payment was declined by the card issuer. "
-                "No retry has been used yet, so the agent will "
-                "attempt a recovery retry."
+            return {
+                "action": "retry",
+                "decision_reason": (
+                    "The retrieved merchant policy allows one "
+                    "retry for a card decline. No retry has been "
+                    "used yet, so the payment will be retried."
+                )
+            }
+
+        return {
+            "action": "payment_link",
+            "decision_reason": (
+                "The retrieved merchant policy allows one retry "
+                "for a card decline. The retry limit has been "
+                "reached, so a payment link will be generated."
             )
-
-        else:
-            action = "payment_link"
-
-            decision_reason = (
-                "The allowed retry attempt has already been used "
-                "for this card decline. The agent will generate "
-                "a payment link instead."
-            )
+        }
 
     elif failure_reason == "bank_timeout":
 
         if attempt_count < 2:
-            action = "retry"
 
-            decision_reason = (
-                f"The payment failed because of a bank timeout. "
-                f"{attempt_count} retry attempt(s) have been used, "
-                "so another retry is allowed."
+            return {
+                "action": "retry",
+                "decision_reason": (
+                    "The retrieved merchant policy allows up to "
+                    "2 retries for a bank timeout. The current "
+                    f"attempt count is {attempt_count}, so another "
+                    "retry is allowed."
+                )
+            }
+
+        return {
+            "action": "escalate",
+            "decision_reason": (
+                "The retrieved merchant policy allows up to "
+                "2 retries for a bank timeout. The retry limit "
+                "has been reached, so the payment is escalated."
             )
-
-        else:
-            action = "escalate"
-
-            decision_reason = (
-                "The maximum retry limit has been reached for "
-                "this bank timeout. The agent will escalate the "
-                "payment for further review."
-            )
+        }
 
     else:
 
-        action = "escalate"
+        return {
+            "action": "escalate",
+            "decision_reason": (
+                f"The failure reason '{failure_reason}' is not "
+                "covered by the retrieved recovery policy. "
+                "The payment was escalated for safety."
+            )
+        }
 
-        decision_reason = (
-            f"The failure reason '{failure_reason}' is not covered "
-            "by the configured recovery policies. The agent will "
-            "escalate instead of taking an unsafe recovery action."
-        )
+def fallback_decision(state):
 
     return {
-        "action": action,
-        "decision_reason": decision_reason
+        "action": "escalate",
+        "decision_reason": (
+            "The agent could not obtain sufficiently relevant "
+            "recovery policy knowledge. The payment was escalated "
+            "for manual review instead of taking an unsafe action."
+        )
     }
-
-
 
 def execute_action(state):
 
