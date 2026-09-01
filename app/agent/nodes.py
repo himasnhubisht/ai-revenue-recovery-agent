@@ -1,3 +1,5 @@
+import re
+
 from app.rag.retriever import retrieve
 from app.rag.grader import grade_document
 
@@ -9,9 +11,12 @@ from app.agent.tools import (
 
 
 def build_query(state):
+    """
+    Build a RAG query from the payment failure event.
 
-    # If this is a natural-language chat query,
-    # extract the failure reason from it.
+    Also supports natural-language queries from the frontend.
+    """
+
     if state.get("query"):
 
         query = state["query"].lower()
@@ -33,7 +38,6 @@ def build_query(state):
             "failure_reason": failure_reason
         }
 
-    # Structured /recover request
     query = (
         f"What should be done for a payment failure "
         f"caused by {state['failure_reason']} "
@@ -47,8 +51,12 @@ def build_query(state):
 
 
 def retrieve_knowledge(state):
+    """
+    Retrieve merchant-specific recovery policies using RAG.
+    """
 
     try:
+
         results = retrieve(
             state["query"],
             state["merchant_id"]
@@ -68,16 +76,21 @@ def retrieve_knowledge(state):
             "retrieval_error": True
         }
 
+
 def grade_knowledge(state):
+    """
+    Check whether retrieved documents are relevant enough
+    to make an automatic recovery decision.
+    """
 
     documents = state.get(
         "retrieved_documents",
         []
     )
 
-    # No documents means the agent cannot safely
-    # make an automatic recovery decision.
+    # No documents -> unsafe to make an automatic decision
     if not documents:
+
         return {
             "relevant": False,
             "grading_error": True
@@ -90,6 +103,7 @@ def grade_knowledge(state):
         for document, score in documents:
 
             if grade_document(query, document):
+
                 return {
                     "relevant": True,
                     "grading_error": False
@@ -106,31 +120,72 @@ def grade_knowledge(state):
 
         return {
             "relevant": False,
-            "grading_error": True}
+            "grading_error": True
+        }
+
 
 def decision_node(state):
+    """
+    Decide the recovery action using the retrieved merchant policy.
 
-    failure_reason = state["failure_reason"]
-    attempt_count = state.get("attempt_count", 0)
+    IMPORTANT:
+    Retry limits are NOT hardcoded for a specific merchant.
+    They are extracted from the retrieved policy.
+    """
 
-    documents = state.get("retrieved_documents", [])
+    failure_reason = state.get(
+        "failure_reason",
+        ""
+    )
+
+    attempt_count = state.get(
+        "attempt_count",
+        0
+    )
+
+    merchant_id = state.get(
+        "merchant_id",
+        "unknown"
+    )
+
+    documents = state.get(
+        "retrieved_documents",
+        []
+    )
 
     # ---------------------------------------------------------
-    # Find merchant policy from retrieved documents
+    # Find the merchant-specific policy
     # ---------------------------------------------------------
 
     policy_text = ""
 
     for document, score in documents:
 
+        document_merchant = document.metadata.get(
+            "merchant_id"
+        )
+
+        # Only use the requested merchant's policy
+        if document_merchant != merchant_id:
+            continue
+
         text = document.page_content
 
-        if failure_reason.replace("_", " ").lower() in text.lower():
+        # Make sure the policy actually discusses
+        # this failure reason
+        normalized_failure = (
+            failure_reason
+            .replace("_", " ")
+            .lower()
+        )
+
+        if normalized_failure in text.lower():
+
             policy_text = text
             break
 
     # ---------------------------------------------------------
-    # If RAG policy was not found, fail safely
+    # No applicable policy -> SAFE FALLBACK
     # ---------------------------------------------------------
 
     if not policy_text:
@@ -138,124 +193,222 @@ def decision_node(state):
         return {
             "action": "escalate",
             "decision_reason": (
-                "No relevant merchant recovery policy was "
-                "retrieved. The payment was escalated for "
-                "manual review."
+                f"No applicable recovery policy was found "
+                f"for merchant '{merchant_id}' and failure "
+                f"reason '{failure_reason}'. "
+                "The payment was escalated for manual review."
             )
         }
+
+    policy_lower = policy_text.lower()
 
     # ---------------------------------------------------------
-    # Decision based on retrieved merchant policy
+    # Extract retry limit from policy
     # ---------------------------------------------------------
 
-    if failure_reason == "insufficient_funds":
+    max_retries = None
 
-        if attempt_count < 2:
+    # Example supported policy language:
+    #
+    # "maximum of 2 automatic retries"
+    # "up to 2 automatic retries"
+    # "only 1 automatic retry"
+    # "1 automatic retry"
+    # "one automatic retry"
+    # "one retry"
+    #
+    numeric_patterns = [
+        r"maximum of (\d+) automatic retr",
+        r"maximum (\d+) automatic retr",
+        r"up to (\d+) automatic retr",
+        r"only (\d+) automatic retr",
+        r"(\d+) automatic retr",
+    ]
 
-            return {
-                "action": "retry",
-                "decision_reason": (
-                    "The retrieved TechStore policy allows "
-                    "up to 2 automatic retries for insufficient "
-                    "funds. The current attempt count is "
-                    f"{attempt_count}, so another retry is allowed."
-                )
-            }
+    for pattern in numeric_patterns:
 
-        return {
-            "action": "payment_link",
-            "decision_reason": (
-                "The retrieved TechStore policy allows a maximum "
-                "of 2 automatic retries for insufficient funds. "
-                "The retry limit has been reached, so a payment "
-                "link will be generated."
+        match = re.search(
+            pattern,
+            policy_lower
+        )
+
+        if match:
+
+            max_retries = int(
+                match.group(1)
             )
-        }
 
-    elif failure_reason == "card_declined":
+            break
 
-        if attempt_count < 1:
+    # Handle "one automatic retry"
+    if (
+        max_retries is None
+        and "one automatic retry" in policy_lower
+    ):
+        max_retries = 1
 
-            return {
-                "action": "retry",
-                "decision_reason": (
-                    "The retrieved merchant policy allows one "
-                    "retry for a card decline. No retry has been "
-                    "used yet, so the payment will be retried."
-                )
-            }
+    # Handle "one retry"
+    if (
+        max_retries is None
+        and "one retry" in policy_lower
+    ):
+        max_retries = 1
 
-        return {
-            "action": "payment_link",
-            "decision_reason": (
-                "The retrieved merchant policy allows one retry "
-                "for a card decline. The retry limit has been "
-                "reached, so a payment link will be generated."
-            )
-        }
+    # Handle "retry once"
+    if (
+        max_retries is None
+        and "retry once" in policy_lower
+    ):
+        max_retries = 1
 
-    elif failure_reason == "bank_timeout":
+    # ---------------------------------------------------------
+    # Could not safely understand the policy
+    # ---------------------------------------------------------
 
-        if attempt_count < 2:
-
-            return {
-                "action": "retry",
-                "decision_reason": (
-                    "The retrieved merchant policy allows up to "
-                    "2 retries for a bank timeout. The current "
-                    f"attempt count is {attempt_count}, so another "
-                    "retry is allowed."
-                )
-            }
+    if max_retries is None:
 
         return {
             "action": "escalate",
             "decision_reason": (
-                "The retrieved merchant policy allows up to "
-                "2 retries for a bank timeout. The retry limit "
-                "has been reached, so the payment is escalated."
+                f"The recovery policy for merchant "
+                f"'{merchant_id}' was retrieved, but "
+                "its retry limit could not be safely "
+                "determined. The payment was escalated."
             )
         }
 
-    else:
+    # ---------------------------------------------------------
+    # RETRY
+    # ---------------------------------------------------------
+
+    if attempt_count < max_retries:
+
+        return {
+            "action": "retry",
+            "decision_reason": (
+                f"The retrieved {merchant_id} merchant "
+                f"policy allows up to {max_retries} "
+                f"retry attempt(s) for "
+                f"{failure_reason.replace('_', ' ')}. "
+                f"The current attempt count is "
+                f"{attempt_count}, so another retry "
+                "is allowed."
+            )
+        }
+
+    # ---------------------------------------------------------
+    # RETRY LIMIT REACHED
+    # Determine next action from the policy
+    # ---------------------------------------------------------
+
+    if "payment link" in policy_lower:
+
+        return {
+            "action": "payment_link",
+            "decision_reason": (
+                f"The retrieved {merchant_id} merchant "
+                f"policy allows {max_retries} retry "
+                f"attempt(s) for "
+                f"{failure_reason.replace('_', ' ')}. "
+                "The retry limit has been reached, "
+                "so a payment link will be generated."
+            )
+        }
+
+    # ---------------------------------------------------------
+    # ESCALATE
+    # ---------------------------------------------------------
+
+    if "escalate" in policy_lower:
 
         return {
             "action": "escalate",
             "decision_reason": (
-                f"The failure reason '{failure_reason}' is not "
-                "covered by the retrieved recovery policy. "
-                "The payment was escalated for safety."
+                f"The retrieved {merchant_id} merchant "
+                f"policy allows {max_retries} retry "
+                f"attempt(s) for "
+                f"{failure_reason.replace('_', ' ')}. "
+                "The retry limit has been reached, "
+                "so the payment will be escalated."
             )
         }
 
-def fallback_decision(state):
+    # ---------------------------------------------------------
+    # Unknown post-retry action -> SAFE FALLBACK
+    # ---------------------------------------------------------
 
     return {
         "action": "escalate",
         "decision_reason": (
-            "The agent could not obtain sufficiently relevant "
-            "recovery policy knowledge. The payment was escalated "
-            "for manual review instead of taking an unsafe action."
+            f"The retrieved {merchant_id} merchant policy "
+            "does not specify a safe action after the "
+            "retry limit. The payment was escalated."
         )
     }
 
+
+def fallback_decision(state):
+    """
+    Safe fallback when RAG retrieval/grading fails.
+    """
+
+    merchant_id = state.get(
+        "merchant_id",
+        "unknown"
+    )
+
+    return {
+        "action": "escalate",
+        "decision_reason": (
+            f"The agent could not obtain sufficiently "
+            f"relevant recovery policy knowledge for "
+            f"merchant '{merchant_id}'. "
+            "The payment was escalated for manual review "
+            "instead of taking an unsafe automatic action."
+        )
+    }
+
+
 def execute_action(state):
+    """
+    Execute the bounded recovery action.
+    """
 
     action = state["action"]
 
-    payment_id = state.get("payment_id", "demo_payment")
-    amount = state.get("amount", 0)
+    payment_id = state.get(
+        "payment_id",
+        "demo_payment"
+    )
+
+    amount = state.get(
+        "amount",
+        0
+    )
 
     if action == "retry":
-        result = retry_payment(payment_id, amount)
+
+        result = retry_payment(
+            payment_id,
+            amount
+        )
 
     elif action == "payment_link":
-        result = generate_payment_link(payment_id, amount)
+
+        result = generate_payment_link(
+            payment_id,
+            amount
+        )
 
     elif action == "escalate":
-        result = escalate_payment(payment_id, amount)
+
+        result = escalate_payment(
+            payment_id,
+            amount
+        )
 
     else:
+
         result = {
             "status": "error",
             "message": "Unknown action."
@@ -267,30 +420,46 @@ def execute_action(state):
 
 
 def generate_response(state):
+    """
+    Generate the final human-readable response.
+    """
 
     action = state.get("action")
-    action_result = state.get("action_result", {})
-    failure_reason = state.get("failure_reason")
+
+    action_result = state.get(
+        "action_result",
+        {}
+    )
+
+    failure_reason = state.get(
+        "failure_reason"
+    )
 
     if action == "retry":
 
         response = (
-            f"The payment failed because of {failure_reason}. "
-            f"The payment is eligible for another retry. "
-            f"The agent has initiated the retry."
+            f"The payment failed because of "
+            f"{failure_reason}. "
+            "The payment is eligible for another retry. "
+            "The agent has initiated the retry."
         )
 
     elif action == "payment_link":
 
-        payment_link = action_result.get("payment_link")
+        payment_link = action_result.get(
+            "payment_link"
+        )
 
         response = (
-            f"The payment has reached the retry limit. "
-            f"The agent generated a payment link."
+            "The payment has reached the retry limit. "
+            "The agent generated a payment link."
         )
 
         if payment_link:
-            response += f" Payment link: {payment_link}"
+
+            response += (
+                f" Payment link: {payment_link}"
+            )
 
     elif action == "escalate":
 
@@ -301,7 +470,10 @@ def generate_response(state):
 
     else:
 
-        response = "I could not determine a valid recovery action."
+        response = (
+            "I could not determine a valid "
+            "recovery action."
+        )
 
     return {
         "final_response": response
