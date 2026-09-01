@@ -21,6 +21,7 @@ The goal of this project is to automate the payment recovery workflow while keep
 
 The system follows this workflow:
 
+```
 Payment Failure
         ↓
 Build Query
@@ -36,6 +37,7 @@ Execute Recovery Action
 Audit Log
         ↓
 Revenue Metrics
+```
 
 The agent can choose between:
 
@@ -114,46 +116,82 @@ AI_REVENUE_AGENT/
 ├── requirements.txt
 ├── .gitignore
 └── README.md
-🚀 Running the Project
-1. Clone the repository
+```
+
+---
+
+## 🚀 Running the Project
+
+### 1. Clone the repository
+
+```bash
 git clone https://github.com/himasnhubisht/ai-revenue-recovery-agent.git
 cd ai-revenue-recovery-agent
-2. Create virtual environment
+```
+
+### 2. Create virtual environment
 
 Windows PowerShell:
 
+```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
-3. Install dependencies
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
-4. Configure environment variables
+```
 
-Create a .env file in the project root:
+### 4. Configure environment variables
 
+Create a `.env` file in the project root:
+
+```
 OPENAI_API_KEY=your_api_key_here
+```
 
 Never commit your real API key to GitHub.
 
-5. Start FastAPI
+### 5. Start FastAPI
+
+```bash
 uvicorn app.main:app --reload
+```
 
-Backend:
+Backend: `http://127.0.0.1:8000`
 
-http://127.0.0.1:8000
-6. Start Streamlit
+### 6. Start Streamlit
 
 Open another terminal:
 
+```powershell
 .\venv\Scripts\Activate.ps1
 python -m streamlit run frontend/app.py
-🔌 Payment Webhook
+```
+
+---
+
+## 🖥️ Demo
+
+The Streamlit dashboard provides a visual interface for simulating payment failures and viewing the agent's recovery decisions and revenue recovery metrics.
+
+![AI Revenue Recovery Agent Dashboard](screenshots/Screenshot%202026-09-01%20153818.png)
+
+---
+
+## 🔌 Payment Webhook
 
 The system exposes:
 
+```
 POST /webhook/payment-failed
+```
 
 Example request:
 
+```json
 {
     "payment_id": "pay_test",
     "merchant_id": "techstore",
@@ -161,21 +199,23 @@ Example request:
     "failure_reason": "insufficient_funds",
     "attempt_count": 1
 }
+```
 
 The event is passed into the LangGraph agent.
 
 The agent:
 
-Builds the query.
-Retrieves relevant merchant knowledge.
-Grades the knowledge.
-Determines the recovery action.
-Executes the recovery tool.
-Returns the result.
-Records the event.
+1. Builds the query.
+2. Retrieves relevant merchant knowledge.
+3. Grades the knowledge.
+4. Determines the recovery action.
+5. Executes the recovery tool.
+6. Returns the result.
+7. Records the event.
 
 Example response:
 
+```json
 {
     "payment_id": "pay_test",
     "merchant_id": "techstore",
@@ -184,29 +224,39 @@ Example response:
     "status": "success",
     "amount_recovered": 3000
 }
-🧩 Recovery Actions
-🔄 Retry
+```
+
+---
+
+## 🧩 Recovery Actions
+
+### 🔄 Retry
 
 Attempts to recover a failed payment when another retry is allowed by the recovery policy.
 
-🔗 Payment Link
+### 🔗 Payment Link
 
 When automatic recovery reaches its allowed limit, the system generates a payment link as an alternative recovery path.
 
-🚨 Escalation
+### 🚨 Escalation
 
 If automatic recovery is not appropriate, the payment is escalated for further handling.
 
-📊 Batch Revenue Recovery
+---
+
+## 📊 Batch Revenue Recovery
 
 The project can process multiple payment failures as a batch.
 
 Run:
 
+```bash
 python -m app.agent.batch_runner
+```
 
 Example:
 
+```
 ==============================
        RECOVERY REPORT
 ==============================
@@ -221,72 +271,90 @@ Failed Retries: 0
 Payment Links: 2
 Successful Link Payments: 0
 Escalations: 1
-🖥️ Streamlit Dashboard
+```
+
+---
+
+## 🖥️ Streamlit Dashboard
 
 The dashboard provides:
 
-Payment failure simulation
-Payment ID
-Merchant ID
-Payment amount
-Failure reason
-Attempt count
-Agent action
-Recovery status
-Amount recovered
-Decision reason
-Revenue at risk
-Revenue recovered
-Recovery rate
-Successful retries
-Payment links
-Escalations
-Payment recovery activity
+- Payment failure simulation
+  - Payment ID
+  - Merchant ID
+  - Payment amount
+  - Failure reason
+  - Attempt count
+- Agent action
+- Recovery status
+- Amount recovered
+- Decision reason
+- Revenue at risk
+- Revenue recovered
+- Recovery rate
+- Successful retries
+- Payment links
+- Escalations
+- Payment recovery activity
 
 The frontend communicates with the FastAPI backend through the payment failure webhook.
 
-🧾 Auditability
+---
+
+## 🧾 Auditability
 
 Processed payment events are recorded in:
 
+```
 data/audit_log.json
+```
 
 Audit records contain:
 
-Payment ID
-Merchant
-Amount
-Failure reason
-Selected action
-Action status
-Amount recovered
-Timestamp
+- Payment ID
+- Merchant
+- Amount
+- Failure reason
+- Selected action
+- Action status
+- Amount recovered
+- Timestamp
 
 This provides an audit trail for the recovery workflow.
 
-🧪 Testing
+---
+
+## 🧪 Testing
 
 Run:
 
+```bash
 pytest
+```
 
 The project includes tests for important application functionality.
 
-🔐 Safety and Bounded Actions
+---
+
+## 🔐 Safety and Bounded Actions
 
 This project uses simulated payment tools rather than real payment processing.
 
 Available recovery actions are explicitly bounded to:
 
-retry
-payment_link
-escalate
+- `retry`
+- `payment_link`
+- `escalate`
 
 The system does not directly control real financial accounts.
 
 In production, simulated tools could be replaced with payment provider APIs together with authentication, authorization, idempotency, monitoring, rate limiting, and compliance controls.
 
-🏗️ Architecture
+---
+
+## 🏗️ Architecture
+
+```
 Payment Failure
        │
        ▼
@@ -319,20 +387,27 @@ Revenue Metrics
        │
        ▼
 Streamlit Dashboard
-🔮 Future Improvements
-Real payment provider integration
-Persistent production database
-Authentication and authorization
-Scheduled recovery workflows
-Customer notification systems
-Advanced monitoring
-Production deployment
-Subscription payment recovery
-Overdue invoice recovery
-Human approval workflows
-👨‍💻 Author
+```
 
-Himanshu Bisht
+---
+
+## 🔮 Future Improvements
+
+- Real payment provider integration
+- Persistent production database
+- Authentication and authorization
+- Scheduled recovery workflows
+- Customer notification systems
+- Advanced monitoring
+- Production deployment
+- Subscription payment recovery
+- Overdue invoice recovery
+- Human approval workflows
+
+---
+
+## 👨‍💻 Author
+
+**Himanshu Bisht**
 
 GitHub: https://github.com/himasnhubisht
-
