@@ -1,16 +1,15 @@
 from langgraph.graph import StateGraph, START, END
 
 from app.agent.state import AgentState
-
 from app.agent.nodes import (
     build_query,
     retrieve_knowledge,
     grade_knowledge,
     decision_node,
+    fallback_decision,
     execute_action,
     generate_response,
 )
-
 
 def route_after_grading(state):
 
@@ -29,6 +28,10 @@ graph_builder.add_node("build_query", build_query)
 graph_builder.add_node("retrieve_knowledge", retrieve_knowledge)
 graph_builder.add_node("grade_knowledge", grade_knowledge)
 graph_builder.add_node("decision", decision_node)
+graph_builder.add_node(
+    "fallback_decision",
+    fallback_decision
+)
 graph_builder.add_node("execute_action", execute_action)
 graph_builder.add_node("generate_response", generate_response)
 
@@ -53,10 +56,9 @@ graph_builder.add_conditional_edges(
     route_after_grading,
     {
         "relevant": "decision",
-        "not_relevant": END,
+        "not_relevant": "fallback_decision",
     }
 )
-
 
 # Agent decision → tool → response
 graph_builder.add_edge(
@@ -72,6 +74,10 @@ graph_builder.add_edge(
 graph_builder.add_edge(
     "generate_response",
     END
+)
+graph_builder.add_edge(
+    "fallback_decision",
+    "execute_action"
 )
 
 

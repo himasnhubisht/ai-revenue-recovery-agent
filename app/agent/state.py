@@ -20,3 +20,5 @@ class AgentState(TypedDict, total=False):
     action_result: dict
 
     final_response: str
+    retrieval_error: bool
+    grading_error: bool
