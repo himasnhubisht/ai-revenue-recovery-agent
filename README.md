@@ -339,3 +339,11 @@ Human approval workflows
 Himanshu Bisht
 
 GitHub: https://github.com/himasnhubisht
+
+---
+
+## 🖥️ Demo
+
+The Streamlit dashboard provides a visual interface for simulating payment failures and viewing the agent's recovery decisions and revenue recovery metrics.
+
+![AI Revenue Recovery Agent Dashboard](screenshots/dashboard.png)
