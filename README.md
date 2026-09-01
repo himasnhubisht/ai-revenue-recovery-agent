@@ -1,240 +1,102 @@
-AI Revenue Recovery Agent 💰
+# 💰 AI Revenue Recovery Agent
 
-An AI-powered payment recovery agent that detects failed payments, retrieves the relevant merchant recovery policy using RAG, makes a bounded recovery decision, executes the appropriate action, and records the result for revenue tracking and auditability.
+An AI-powered revenue recovery agent that detects failed payments, retrieves relevant merchant recovery policies using RAG, selects a bounded recovery action, executes the action, and records the outcome for audit and revenue tracking.
 
-Problem
+---
 
-Payment failures can cause merchants to lose revenue. Different failure reasons may require different recovery strategies, and merchants may have different retry limits and communication policies.
+## 🎯 Problem
 
-The goal of this project is to close the loop:
+Revenue can be lost when:
 
-Payment failure → Diagnose → Decide → Recover → Track
+- Payments fail
+- Customers abandon checkout
+- Subscription payments fail
+- Recovery attempts are not handled systematically
 
-What the agent does
+The goal of this project is to automate the payment recovery workflow while keeping recovery actions bounded and auditable.
 
-When a failed-payment event is received, the system:
+---
 
-Receives the payment failure event through a FastAPI webhook.
+## 🤖 What the Agent Does
 
-Builds a query from the payment context when needed.
+The system follows this workflow:
 
-Retrieves relevant merchant/global policy documents using RAG.
-
-Grades the retrieved knowledge for relevance.
-
-Makes a bounded recovery decision based on the failure reason and retry count.
-
-Executes the selected recovery tool:
-
-retry
-
-payment_link
-
-escalate
-
-Records the result in an audit log.
-
-Updates revenue-recovery metrics shown in the Streamlit dashboard.
-
-Example
-
-For TechStore:
-
-Failure: insufficient_funds
-Attempt: 1
+Payment Failure
         ↓
-Merchant policy retrieved
+Build Query
         ↓
-Maximum retries = 2
+Retrieve Merchant Knowledge using RAG
         ↓
-Agent decision: retry
+Grade Retrieved Knowledge
         ↓
-Retry tool executed
+Bounded Decision
         ↓
-Payment recovered
-
-If the payment has already reached the retry limit:
-
-Failure: insufficient_funds
-Attempt: 2
+Execute Recovery Action
         ↓
-Retry limit reached
+Audit Log
         ↓
-Agent decision: payment_link
-        ↓
-Payment link generated
-        ↓
-Status: pending
+Revenue Metrics
 
-For an unknown failure reason:
+The agent can choose between:
 
-Unknown failure
-        ↓
-Agent cannot safely apply an automatic recovery policy
-        ↓
-Agent decision: escalate
+- 🔄 Retry payment
+- 🔗 Generate payment link
+- 🚨 Escalate the payment
 
-Architecture
+---
 
-                    ┌─────────────────────┐
-                    │   Payment Event      │
-                    │    FastAPI Webhook   │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │    Build Query      │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │   RAG Retrieval     │
-                    │ Merchant + Global   │
-                    │     Knowledge       │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │  Relevance Grader   │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │   Agent Decision    │
-                    │ retry / link /      │
-                    │     escalate        │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │   Action Tool       │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │ Audit + Metrics     │
-                    └──────────┬──────────┘
-                               ↓
-                    ┌─────────────────────┐
-                    │ Streamlit Dashboard │
-                    └─────────────────────┘
+## 🧠 RAG Pipeline
 
-Agent workflow
+Merchant recovery policies are stored as documents and embedded into a vector database.
 
-The agent is implemented as a LangGraph state workflow:
+For a payment failure:
 
-START
-  ↓
-build_query
-  ↓
-retrieve_knowledge
-  ↓
-grade_knowledge
-  ↓
- ┌───────────────┐
- │ relevant?     │
- └───────┬───────┘
-     yes │ no
-         │
-         ↓
-     decision
-         ↓
-   execute_action
-         ↓
-        END
+1. A query is created from the payment context.
+2. Relevant merchant-specific knowledge is retrieved.
+3. Retrieved documents are checked for relevance.
+4. The agent proceeds only when relevant knowledge is available.
 
-If the retrieved knowledge is not relevant, the workflow stops instead of blindly executing a recovery action.
+This allows recovery decisions to be grounded in merchant-specific policies.
 
-RAG
+---
 
-The knowledge base contains merchant-specific and global payment policies.
+## 🔄 Recovery Decision Logic
 
-Example merchant knowledge:
+| Failure Reason | Condition | Action |
+|---|---|---|
+| Insufficient funds | Attempts < 2 | Retry |
+| Insufficient funds | Attempts ≥ 2 | Payment Link |
+| Card declined | Attempts < 1 | Retry |
+| Card declined | Attempts ≥ 1 | Payment Link |
+| Bank timeout | Attempts < 2 | Retry |
+| Bank timeout | Attempts ≥ 2 | Escalate |
+| Unknown error | Any | Escalate |
 
-data/
-├── merchants/
-│   └── techstore/
-│       ├── retry_policy.md
-│       └── communication_policy.md
-└── global/
-    └── payment_error_codes.md
+The agent does not have unrestricted control over payment operations.
 
-The retrieval layer uses the payment context to find the policies relevant to the specific merchant and failure reason.
+---
 
-The LLM is used where reasoning adds value, including the relevance-grading step. The actual recovery actions are bounded by explicit business rules rather than allowing the model to perform arbitrary actions.
+## 🛠️ Tech Stack
 
-Recovery actions
+- Python
+- LangGraph
+- RAG
+- ChromaDB
+- FastAPI
+- Streamlit
+- Requests
+- Pytest
 
-Retry
+---
 
-Used when the merchant policy allows another automatic retry.
+## 📁 Project Structure
 
-Payment link
-
-Used when automatic retries are exhausted but the payment can still be recovered through customer action.
-
-A generated link is treated as pending revenue, not immediately recovered revenue.
-
-Escalation
-
-Used when the system cannot safely perform an automatic recovery action, such as an unsupported/unknown failure or an exhausted retry path that requires manual review.
-
-Revenue metrics
-
-The dashboard tracks:
-
-Total payments
-
-Revenue at risk
-
-Revenue recovered
-
-Recovery rate
-
-Successful retries
-
-Payment links
-
-Escalations
-
-Payment recovery activity
-
-Audit timestamps
-
-Recovery rate:
-
-Revenue Recovered
------------------ × 100
-Revenue At Risk
-
-Tech Stack
-
-Python
-
-FastAPI
-
-LangGraph
-
-LangChain
-
-OpenAI API
-
-RAG / vector retrieval
-
-Streamlit
-
-JSON/Markdown knowledge and audit data
-
-Project Structure
-
+```text
 AI_REVENUE_AGENT/
 │
 ├── app/
 │   ├── agent/
-│   │   ├── state.py
-│   │   ├── nodes.py
-│   │   ├── graph.py
-│   │   ├── tools.py
-│   │   └── batch_runner.py
-│   │
 │   ├── rag/
-│   │   ├── retriever.py
-│   │   └── grader.py
-│   │
 │   └── ...
 │
 ├── data/
@@ -246,142 +108,231 @@ AI_REVENUE_AGENT/
 ├── frontend/
 │   └── app.py
 │
+├── scripts/
+├── tests/
+│
 ├── requirements.txt
-├── .env
+├── .gitignore
 └── README.md
+🚀 Running the Project
+1. Clone the repository
+git clone https://github.com/himasnhubisht/ai-revenue-recovery-agent.git
+cd ai-revenue-recovery-agent
+2. Create virtual environment
 
-Running locally
+Windows PowerShell:
 
-1. Create and activate the virtual environment
-
-PowerShell:
-
+python -m venv venv
 .\venv\Scripts\Activate.ps1
+3. Install dependencies
+pip install -r requirements.txt
+4. Configure environment variables
 
-2. Configure the OpenAI API key
-
-Create a .env file:
+Create a .env file in the project root:
 
 OPENAI_API_KEY=your_api_key_here
 
-Do not commit .env to GitHub.
+Never commit your real API key to GitHub.
 
-3. Start FastAPI
+5. Start FastAPI
+uvicorn app.main:app --reload
 
-python -m uvicorn app.main:app --reload
+Backend:
 
-4. Start Streamlit
+http://127.0.0.1:8000
+6. Start Streamlit
 
-Open another terminal, activate the same virtual environment, then run:
+Open another terminal:
 
+.\venv\Scripts\Activate.ps1
 python -m streamlit run frontend/app.py
+🔌 Payment Webhook
 
-The Streamlit application communicates with the FastAPI webhook and displays the agent's decision and recovery result.
+The system exposes:
 
-Demo scenarios
+POST /webhook/payment-failed
 
-Use these scenarios to demonstrate the bounded agent behavior:
-
-Failure
-
-Attempt
-
-Expected action
-
-insufficient_funds
-
-1
-
-retry
-
-insufficient_funds
-
-2
-
-payment_link
-
-unknown_error
-
-2
-
-escalate
-
-bank_timeout
-
-below limit
-
-retry
-
-Example API event
+Example request:
 
 {
-  "payment_id": "pay_test",
-  "merchant_id": "techstore",
-  "amount": 3000,
-  "failure_reason": "insufficient_funds",
-  "attempt_count": 1
+    "payment_id": "pay_test",
+    "merchant_id": "techstore",
+    "amount": 3000,
+    "failure_reason": "insufficient_funds",
+    "attempt_count": 1
 }
 
-The FastAPI webhook passes this event into the agent workflow.
+The event is passed into the LangGraph agent.
 
-Why this is an agent
+The agent:
 
-This is not simply an API returning a fixed JSON response.
+Builds the query.
+Retrieves relevant merchant knowledge.
+Grades the knowledge.
+Determines the recovery action.
+Executes the recovery tool.
+Returns the result.
+Records the event.
 
-The workflow:
+Example response:
 
-retrieves external knowledge,
+{
+    "payment_id": "pay_test",
+    "merchant_id": "techstore",
+    "failure_reason": "insufficient_funds",
+    "action": "retry",
+    "status": "success",
+    "amount_recovered": 3000
+}
+🧩 Recovery Actions
+🔄 Retry
 
-evaluates whether that knowledge is relevant,
+Attempts to recover a failed payment when another retry is allowed by the recovery policy.
 
-maintains state across multiple steps,
+🔗 Payment Link
 
-selects an action based on the payment context and policies,
+When automatic recovery reaches its allowed limit, the system generates a payment link as an alternative recovery path.
 
-invokes an action tool,
+🚨 Escalation
 
-and records the outcome.
+If automatic recovery is not appropriate, the payment is escalated for further handling.
 
-The important distinction is that the LLM does not have unrestricted control over payments. Recovery actions are bounded by explicit business rules and implemented as tools.
+📊 Batch Revenue Recovery
 
-Safety and bounded recovery
+The project can process multiple payment failures as a batch.
 
-The system is intentionally conservative:
+Run:
 
-It respects merchant retry limits.
+python -m app.agent.batch_runner
 
-It does not retry indefinitely.
+Example:
 
-Unknown cases are escalated.
+==============================
+       RECOVERY REPORT
+==============================
 
-A generated payment link is not counted as recovered revenue until payment succeeds.
+Total Payments: 10
+Revenue At Risk: ₹53000
+Revenue Recovered: ₹33300
+Recovery Rate: 62.83 %
 
-Recovery activity is recorded for auditability.
+Successful Retries: 7
+Failed Retries: 0
+Payment Links: 2
+Successful Link Payments: 0
+Escalations: 1
+🖥️ Streamlit Dashboard
 
-Future improvements
+The dashboard provides:
 
-Possible production extensions include:
+Payment failure simulation
+Payment ID
+Merchant ID
+Payment amount
+Failure reason
+Attempt count
+Agent action
+Recovery status
+Amount recovered
+Decision reason
+Revenue at risk
+Revenue recovered
+Recovery rate
+Successful retries
+Payment links
+Escalations
+Payment recovery activity
 
-Real payment-provider webhooks
+The frontend communicates with the FastAPI backend through the payment failure webhook.
 
-Real payment-provider APIs
+🧾 Auditability
 
-Customer notification systems
+Processed payment events are recorded in:
 
-Persistent database storage
+data/audit_log.json
 
-Background job scheduling for delayed retries
+Audit records contain:
 
+Payment ID
+Merchant
+Amount
+Failure reason
+Selected action
+Action status
+Amount recovered
+Timestamp
+
+This provides an audit trail for the recovery workflow.
+
+🧪 Testing
+
+Run:
+
+pytest
+
+The project includes tests for important application functionality.
+
+🔐 Safety and Bounded Actions
+
+This project uses simulated payment tools rather than real payment processing.
+
+Available recovery actions are explicitly bounded to:
+
+retry
+payment_link
+escalate
+
+The system does not directly control real financial accounts.
+
+In production, simulated tools could be replaced with payment provider APIs together with authentication, authorization, idempotency, monitoring, rate limiting, and compliance controls.
+
+🏗️ Architecture
+Payment Failure
+       │
+       ▼
+FastAPI Webhook
+       │
+       ▼
+LangGraph Agent
+       │
+       ▼
+Build Query
+       │
+       ▼
+RAG Retrieval
+       │
+       ▼
+Knowledge Grading
+       │
+       ▼
+Recovery Decision
+    /    |    \
+   ▼     ▼     ▼
+ Retry  Payment  Escalate
+        Link
+    \    |    /
+       ▼
+   Audit Log
+       │
+       ▼
+Revenue Metrics
+       │
+       ▼
+Streamlit Dashboard
+🔮 Future Improvements
+Real payment provider integration
+Persistent production database
 Authentication and authorization
-
-More merchant policies
-
-Monitoring and alerting
-
+Scheduled recovery workflows
+Customer notification systems
+Advanced monitoring
 Production deployment
+Subscription payment recovery
+Overdue invoice recovery
+Human approval workflows
+👨‍💻 Author
 
-Demo outcome
+Himanshu Bisht
 
-The project demonstrates the complete recovery loop:
+GitHub: https://github.com/himasnhubisht
 
-Detect revenue at risk → retrieve policy → make a bounded decision → execute recovery → measure recovered revenue.
