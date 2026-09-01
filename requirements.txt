@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+
+langchain
+langchain-community
+langchain-openai
+chromadb
+langchain-text-splitters
+langchain-pinecone
+langchain_chroma
+
+streamlit

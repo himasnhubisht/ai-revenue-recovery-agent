@@ -1,0 +1,72 @@
+[
+  {
+    "payment_id": "pay_001",
+    "merchant_id": "techstore",
+    "amount": 2000,
+    "failure_reason": "insufficient_funds",
+    "attempt_count": 0
+  },
+  {
+    "payment_id": "pay_002",
+    "merchant_id": "techstore",
+    "amount": 4500,
+    "failure_reason": "insufficient_funds",
+    "attempt_count": 1
+  },
+  {
+    "payment_id": "pay_003",
+    "merchant_id": "techstore",
+    "amount": 3000,
+    "failure_reason": "card_declined",
+    "attempt_count": 0
+  },
+  {
+    "payment_id": "pay_004",
+    "merchant_id": "techstore",
+    "amount": 7500,
+    "failure_reason": "bank_timeout",
+    "attempt_count": 0
+  },
+  {
+    "payment_id": "pay_005",
+    "merchant_id": "techstore",
+    "amount": 12000,
+    "failure_reason": "unknown_error",
+    "attempt_count": 0
+  },
+  {
+    "payment_id": "pay_006",
+    "merchant_id": "fashionkart",
+    "amount": 1800,
+    "failure_reason": "insufficient_funds",
+    "attempt_count": 0
+  },
+  {
+    "payment_id": "pay_007",
+    "merchant_id": "fashionkart",
+    "amount": 6200,
+    "failure_reason": "card_declined",
+    "attempt_count": 1
+  },
+  {
+    "payment_id": "pay_008",
+    "merchant_id": "fashionkart",
+    "amount": 9000,
+    "failure_reason": "bank_timeout",
+    "attempt_count": 1
+  },
+  {
+    "payment_id": "pay_009",
+    "merchant_id": "techstore",
+    "amount": 1500,
+    "failure_reason": "insufficient_funds",
+    "attempt_count": 2
+  },
+  {
+    "payment_id": "pay_010",
+    "merchant_id": "techstore",
+    "amount": 5500,
+    "failure_reason": "card_declined",
+    "attempt_count": 0
+  }
+]
