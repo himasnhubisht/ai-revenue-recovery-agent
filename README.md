@@ -335,12 +335,3 @@ Human approval workflows
 Himanshu Bisht
 
 GitHub: https://github.com/himasnhubisht
-
-
-### 5. Click **Commit changes**
-
-**DONE. Stop there.** 😂
-
-Don't add screenshots, don't modify Python, don't run commands.
-
-After this, just tell me **`done`** and I'll give you **ONE next task only**.
