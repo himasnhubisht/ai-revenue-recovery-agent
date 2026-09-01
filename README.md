@@ -23,7 +23,7 @@ The system follows this workflow:
 
 Payment Failure
         ↓
-Build / Transform Query
+Build Query
         ↓
 Retrieve Merchant Knowledge using RAG
         ↓
@@ -56,15 +56,13 @@ For a payment failure:
 3. Retrieved documents are checked for relevance.
 4. The agent proceeds only when relevant knowledge is available.
 
-This allows recovery decisions to be grounded in merchant-specific policies instead of relying only on hard-coded rules.
+This allows recovery decisions to be grounded in merchant-specific policies.
 
 ---
 
 ## 🔄 Recovery Decision Logic
 
 Recovery actions are intentionally bounded.
-
-Example:
 
 | Failure Reason | Condition | Action |
 |---|---|---|
@@ -100,20 +98,12 @@ AI_REVENUE_AGENT/
 │
 ├── app/
 │   ├── agent/
-│   │   ├── graph.py
-│   │   ├── nodes.py
-│   │   ├── state.py
-│   │   ├── tools.py
-│   │   └── batch_runner.py
-│   │
 │   ├── rag/
-│   │   ├── retriever.py
-│   │   ├── grader.py
-│   │   └── ...
-│   │
 │   └── ...
 │
 ├── data/
+│   ├── merchants/
+│   ├── global/
 │   ├── payments.json
 │   └── audit_log.json
 │
